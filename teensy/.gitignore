@@ -1,0 +1,6 @@
+depend
+*.a
+*.elf
+*.hex
+*.lk
+*.map
