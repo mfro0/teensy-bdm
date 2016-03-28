@@ -161,16 +161,16 @@ static uint16_t endp0_tx_datalen = 0;           // length of data remaining to s
  */
 static uint8_t endp1_tx[2][ENDP1_SIZE];
 
-static const uint8_t *endp1_tx_dataptr = NULL;
-static uint16_t endp1_tx_datalen = 0;
+// static const uint8_t *endp1_tx_dataptr = NULL;
+// static uint16_t endp1_tx_datalen = 0;
 
 /*
  * endpoint 2 receive buffers (2 x 64 bytes)
  */
 static uint8_t endp2_rx[2][ENDP2_SIZE];
 
-static const uint8_t *endp2_tx_dataptr = NULL;
-static uint16_t endp2_tx_datalen = 0;
+// static const uint8_t *endp2_tx_dataptr = NULL;
+// static uint16_t endp2_tx_datalen = 0;
 
 /*
  * Device descriptor
@@ -277,7 +277,7 @@ static uint8_t endp1_odd = 0;
 static uint8_t endp1_data = 0;
 
 static uint8_t endp2_odd = 0;
-static uint8_t endp2_data = 0;
+// static uint8_t endp2_data = 0;
 
 
 static void usb_endp0_transmit(const void *data, uint8_t length)
@@ -292,7 +292,7 @@ static void usb_endp0_transmit(const void *data, uint8_t length)
     endp0_data ^= 1;
 }
 
-static unsigned char cmd_buffer[ENDP0_SIZE];
+// static unsigned char cmd_buffer[ENDP0_SIZE];
 
 /*
  * Endpoint 0 setup handler
@@ -517,7 +517,7 @@ static void usb_endp1_transmit(const void *data, uint8_t length)
      * toggle the odd and data bits
      */
     endp1_odd ^= 1;
-    // endp1_data ^= 1;
+    endp1_data ^= 1;
 }
 
 static uint8_t *data = "1234567890";
@@ -574,6 +574,7 @@ void usb_endp2_handler(uint8_t stat)
             /*
              * nothing to do here..just give the buffer back
              */
+	    hexdump(bdt->addr, 64);
             bdt->desc = BDT_DESC(ENDP2_SIZE, bdt);
             break;
 
