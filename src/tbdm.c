@@ -546,7 +546,7 @@ void usb_endp1_handler(uint8_t stat)
             break;
 
         default:
-            dbg("type %0x02d packet received. Not handled\r\n", BDT_PID(bdt->desc));
+            dbg("type 0x%x packet received. Not handled\r\n", BDT_PID(bdt->desc));
             break;
     }
 
@@ -574,12 +574,12 @@ void usb_endp2_handler(uint8_t stat)
             /*
              * nothing to do here..just give the buffer back
              */
-	    hexdump(bdt->addr, 64);
+            hexdump(bdt->addr, 64);
             bdt->desc = BDT_DESC(ENDP2_SIZE, bdt);
             break;
 
         default:
-            dbg("type %0x02d packet received. Not handled\r\n", BDT_PID(bdt->desc));
+            dbg("type 0x%02x packet received. Not handled\r\n", BDT_PID(bdt->desc));
             break;
     }
 
