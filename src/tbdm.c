@@ -28,6 +28,7 @@
 #include "arm_cm4.h"
 
 #include "xprintf.h"
+#include "xstring.h"
 
 #define DBG_TUSB
 #ifdef DBG_TUSB
@@ -37,7 +38,7 @@
 #endif /* DBG_TUSB */
 #define err(format, arg...) do { xprintf("ERROR (%s()): " format, __FUNCTION__, ##arg); } while(0)
 
-enum
+enum pid_t
 {
     PID_OUT = 0x01,
     PID_DATA0 = 0x03,
@@ -47,12 +48,12 @@ enum
     PID_SETUP = 0x0d,
     PID_STALL = 0x0e,
     PID_DERR = 0x0f
-} pid_t;
+};
 
 /*
  * request types
  */
-enum
+enum request_t
 {
     R_GET_STATUS = 0x00,
     R_CLEAR_FEATURE = 0x01,
@@ -65,7 +66,7 @@ enum
     R_GET_INTERFACE = 0x0a,
     R_SET_INTERFACE = 0x11,
     R_SYNC_FRAME = 0x12
-} request_type;
+};
 
 /*
  * interface request types
@@ -520,14 +521,12 @@ static void usb_endp1_transmit(const void *data, uint8_t length)
     endp1_data ^= 1;
 }
 
-static uint8_t *data = "1234567890";
-
 /*
  * Endpoint 1 handler
  */
 void usb_endp1_handler(uint8_t stat)
 {
-    uint32_t size = 0;
+    uint8_t data[] = "a message from your Teensy";
 
     /*
      * determine which bdt we are looking at here
@@ -570,12 +569,10 @@ void usb_endp2_handler(uint8_t stat)
     switch (BDT_PID(bdt->desc))
     {
         case PID_OUT:
-            dbg("PID_OUT\r\n");
-            /*
-             * nothing to do here..just give the buffer back
-             */
-            hexdump(bdt->addr, 64);
+            dbg("PID_OUT, %d bytes received\r\n", (bdt->desc >> BDT_BC_SHIFT) & 0x3ff);
+            hexdump(bdt->addr, (bdt->desc >> BDT_BC_SHIFT) & 0x3ff);
             bdt->desc = BDT_DESC(ENDP2_SIZE, bdt);
+            endp2_odd ^= 1;
             break;
 
         default:
