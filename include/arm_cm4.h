@@ -33,8 +33,8 @@
 
 #include "common.h"
 
-#define LED_ON()  GPIOC_PSOR = (1 << 5)
-#define LED_OFF() GPIOC_PCOR = (1 << 5)
+#define LED_ON()  BITBAND_REG(GPIOC_PDOR, 5) = 1
+#define LED_OFF() BITBAND_REG(GPIOC_PDOR, 5) = 0
 
 /*ARM Cortex M4 implementation for interrupt priority shift*/
 #define ARM_INTERRUPT_LEVEL_BITS          4
