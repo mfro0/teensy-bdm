@@ -38,7 +38,7 @@
 #endif /* DBG_TUSB */
 #define err(format, arg...) do { xprintf("ERROR (%s()): " format, __FUNCTION__, ##arg); } while(0)
 
-enum pid_t
+enum
 {
     PID_OUT = 0x01,
     PID_DATA0 = 0x03,
@@ -48,12 +48,12 @@ enum pid_t
     PID_SETUP = 0x0d,
     PID_STALL = 0x0e,
     PID_DERR = 0x0f
-};
+} pid_t;
 
 /*
  * request types
  */
-enum request_t
+enum
 {
     R_GET_STATUS = 0x00,
     R_CLEAR_FEATURE = 0x01,
@@ -66,13 +66,12 @@ enum request_t
     R_GET_INTERFACE = 0x0a,
     R_SET_INTERFACE = 0x11,
     R_SYNC_FRAME = 0x12
-};
+} request_type;
 
 /*
  * interface request types
  */
 #define ENDP0_SIZE 64
-#define ENDP1_SIZE 64
 #define ENDP2_SIZE 64
 
 struct setup
@@ -81,14 +80,46 @@ struct setup
     {
         struct
         {
-            uint8_t bmRequestType;
+            union
+            {
+                uint8_t bmRequestType;
+                struct
+                {
+                    uint8_t transfer_direction      : 1;    /* 0=host to device, 1=device to host */
+                    uint8_t type                    : 2;    /* see enum r_type below */
+                    uint8_t recipient               : 5;    /* see r_recip below */
+                };
+            };
             uint8_t bRequest;
         };
         uint16_t wRequestAndType;
     };
-    uint16_t wValue;
+    union
+    {
+        struct
+        {
+            uint8_t lo;
+            uint8_t hi;
+        };
+        uint16_t wValue;
+    };
     uint16_t wIndex;
     uint16_t wLength;
+};
+
+enum r_type
+{
+    STANDARD = 0,
+    CLASS = 1,
+    VENDOR_SPECIFIC = 2
+};
+
+enum r_recip
+{
+    DEVICE = 0,
+    INTERFACE = 1,
+    ENDPOINT = 2,
+    OTHER = 3           // ???
 };
 
 struct str_descriptor
@@ -158,20 +189,11 @@ static const uint8_t *endp0_tx_dataptr = NULL;  // pointer to current transmit c
 static uint16_t endp0_tx_datalen = 0;           // length of data remaining to send
 
 /*
- * endpoint 1 send buffers (2 x 64 bytes)
- */
-static uint8_t endp1_tx[2][ENDP1_SIZE];
-
-// static const uint8_t *endp1_tx_dataptr = NULL;
-// static uint16_t endp1_tx_datalen = 0;
-
-/*
  * endpoint 2 receive buffers (2 x 64 bytes)
  */
 static uint8_t endp2_rx[2][ENDP2_SIZE];
-
-// static const uint8_t *endp2_tx_dataptr = NULL;
-// static uint16_t endp2_tx_datalen = 0;
+static const uint8_t *endp2_rx_dataptr = NULL;
+static uint16_t endp2_rx_datalen = 0;
 
 /*
  * Device descriptor
@@ -240,6 +262,19 @@ static uint8_t cfg_descriptor[] =
     /* INTERFACE 0 END */
 };
 
+static uint8_t device_qualifier[] =
+{
+    9,                  // bLength
+    0x6,                // bDescriptorType
+    0x00, 0x20,         // bcdUSB - USB version number
+    0xff,               // bDeviceClass
+    0xff,               // bDeviceSubClass
+    0xff,               // bDeviceProtocol
+    64,                 // bMaxPacketSize0
+    1,                  // bNumConfigurations
+    0,                  // bReserved
+};
+
 static struct str_descriptor lang_descriptor =
 {
     .bLength = 4,
@@ -268,17 +303,15 @@ static const struct descriptor_entry descriptors[] =
     { 0x0300, 0x0000, &lang_descriptor, 4 },
     { 0x0301, 0x0409, &manuf_descriptor, 2 + 15 * 2 },
     { 0x0302, 0x0409, &product_descriptor, 2 + 15 * 2 },
+    { 0x0600, 0x0000, &device_qualifier, sizeof(device_qualifier) },
     { 0x0000, 0x0000, NULL, 0 }
 };
 
 static uint8_t endp0_odd = 0;
 static uint8_t endp0_data = 0;
 
-static uint8_t endp1_odd = 0;
-static uint8_t endp1_data = 0;
-
 static uint8_t endp2_odd = 0;
-// static uint8_t endp2_data = 0;
+static uint8_t endp2_data = 0;
 
 
 static void usb_endp0_transmit(const void *data, uint8_t length)
@@ -293,7 +326,7 @@ static void usb_endp0_transmit(const void *data, uint8_t length)
     endp0_data ^= 1;
 }
 
-// static unsigned char cmd_buffer[ENDP0_SIZE];
+static unsigned char cmd_buffer[ENDP0_SIZE];
 
 /*
  * Endpoint 0 setup handler
@@ -327,9 +360,19 @@ static void usb_endp0_handle_setup(struct setup *packet)
 
         case R_SET_CONFIGURATION:    // set configuration
             dbg("set configuration %d\r\n", packet->wValue);
-            dbg("enable endpoint 1 and endpoint 2\r\n");
+            dbg("enable endpoint 2\r\n");
+            if (packet->lo)
+            {
+                /* non-zero configuration number */
+                /* initialize EP2 */
 
-            // we only have one configuration at this time
+            }
+            else
+            {
+                /* configuration zero means back to addressed state */
+            }
+
+            /* next send back the confirmation */
             break;
 
         case R_GET_DESCRIPTOR:    // get descriptor
@@ -338,7 +381,8 @@ static void usb_endp0_handle_setup(struct setup *packet)
             {
                 if (entry->addr == NULL)
                     break;
-
+                dbg("packet->wValue=%4x, entry->wValue=%4x\r\n", packet->wValue, entry->wValue);
+                dbg("packet->wIndex=%4x, entry->wIndex=%4x\r\n", packet->wIndex, entry->wIndex);
                 if (packet->wValue == entry->wValue && packet->wIndex == entry->wIndex)
                 {
                     // this is the descriptor to send
@@ -355,7 +399,9 @@ static void usb_endp0_handle_setup(struct setup *packet)
             break;
 
         default:
-            dbg("stalled (packet->wRequestAndType=%04x)\r\n", packet->wRequestAndType);
+            dbg("stalled\r\n"
+                "(packet->bmRequest=%02x,\r\n"
+                " packet->bmRequestType=%02x)\r\n\r\n", packet->bRequest, packet->bmRequestType);
             goto stall;
     }
 
@@ -365,7 +411,7 @@ static void usb_endp0_handle_setup(struct setup *packet)
 
 send:
 
-    LED_ON();
+    LED_OFF();
     /*
      * truncate the data length to whatever the setup packet is expecting
      */
@@ -385,7 +431,7 @@ send:
     data_length -= size;    // move the size down
     if (data_length == 0 && size < ENDP0_SIZE)
     {
-        LED_OFF();
+        LED_ON();
         return;             // all done!
     }
 
@@ -408,7 +454,7 @@ send:
     endp0_tx_dataptr = data;
     endp0_tx_datalen = data_length;
 
-    LED_OFF();
+    LED_ON();
 
     return;
 
@@ -419,6 +465,16 @@ stall:
     dbg("stalled.\r\n");
 end:
     USB0_ENDPT0 = USB_ENDPT_EPSTALL_MASK | USB_ENDPT_EPRXEN_MASK | USB_ENDPT_EPTXEN_MASK | USB_ENDPT_EPHSHK_MASK;
+}
+
+void usb_endp0_handle_vendor(struct setup *setup)
+{
+    const struct descriptor_entry *entry;
+    const uint8_t *data = NULL;
+    uint8_t data_length = 0;
+    uint32_t size = 0;
+
+    dbg("\r\n");
 }
 
 /**
@@ -460,8 +516,12 @@ void usb_endp0_handler(uint8_t stat)
 
             /*
              * cast the data into our setup type and run the setup
+             * check for vendor specific command (needed for TBLCF)
              */
-            usb_endp0_handle_setup(&last_setup);
+            if (last_setup.type == VENDOR_SPECIFIC)
+                usb_endp0_handle_vendor(&last_setup);
+            else
+                usb_endp0_handle_setup(&last_setup);
 
             /*
              * unfreeze this endpoint
@@ -510,56 +570,11 @@ void usb_endp0_handler(uint8_t stat)
     USB0_CTL = USB_CTL_USBENSOFEN_MASK;
 }
 
-static void usb_endp1_transmit(const void *data, uint8_t length)
-{
-    table[BDT_INDEX(1, TX, endp1_odd)].addr = (void *) data;
-    table[BDT_INDEX(1, TX, endp1_odd)].desc = BDT_DESC(length, endp1_data);
-    /*
-     * toggle the odd and data bits
-     */
-    endp1_odd ^= 1;
-    endp1_data ^= 1;
-}
-
-/*
- * Endpoint 1 handler
- */
-void usb_endp1_handler(uint8_t stat)
-{
-    uint8_t data[] = "a message from your Teensy";
-
-    /*
-     * determine which bdt we are looking at here
-     */
-    struct bdt *bdt = &table[BDT_INDEX(1, (stat & USB_STAT_TX_MASK) >> USB_STAT_TX_SHIFT, (stat & USB_STAT_ODD_MASK) >> USB_STAT_ODD_SHIFT)];
-
-    dbg("\r\n");
-    switch (BDT_PID(bdt->desc))
-    {
-        case PID_IN:
-            dbg("PID_IN\r\n");
-
-            usb_endp1_transmit(data, strlen(data));
-            usb_endp1_transmit(data, 0);
-
-            break;
-
-        default:
-            dbg("type 0x%x packet received. Not handled\r\n", BDT_PID(bdt->desc));
-            break;
-    }
-
-    USB0_CTL = USB_CTL_USBENSOFEN_MASK;
-}
-
 /*
  * Endpoint 2 handler
  */
 void usb_endp2_handler(uint8_t stat)
 {
-    const uint8_t *data = NULL;
-    uint32_t size = 0;
-
     /*
      * determine which bdt we are looking at here
      */
@@ -569,14 +584,15 @@ void usb_endp2_handler(uint8_t stat)
     switch (BDT_PID(bdt->desc))
     {
         case PID_OUT:
-            dbg("PID_OUT, %d bytes received\r\n", (bdt->desc >> BDT_BC_SHIFT) & 0x3ff);
-            hexdump(bdt->addr, (bdt->desc >> BDT_BC_SHIFT) & 0x3ff);
+            dbg("PID_OUT\r\n");
+            /*
+             * nothing to do here..just give the buffer back
+             */
             bdt->desc = BDT_DESC(ENDP2_SIZE, bdt);
-            endp2_odd ^= 1;
             break;
 
         default:
-            dbg("type 0x%02x packet received. Not handled\r\n", BDT_PID(bdt->desc));
+            dbg("type %0x02d packet received. Not handled\r\n", BDT_PID(bdt->desc));
             break;
     }
 
@@ -613,6 +629,7 @@ static void usb_endp_default_handler(uint8_t stat)
 
 // weak aliases as "defaults" for the usb endpoint handlers
 
+void usb_endp1_handler(uint8_t) __attribute__((weak, alias("usb_endp_default_handler")));
 void usb_endp3_handler(uint8_t) __attribute__((weak, alias("usb_endp_default_handler")));
 void usb_endp4_handler(uint8_t) __attribute__((weak, alias("usb_endp_default_handler")));
 void usb_endp5_handler(uint8_t) __attribute__((weak, alias("usb_endp_default_handler")));
@@ -714,11 +731,6 @@ void USBOTG_IRQHandler(void)
         table[BDT_INDEX(0, TX, EVEN)].desc = 0;
         table[BDT_INDEX(0, TX, ODD)].desc = 0;
 
-        endp1_odd = 0;
-        table[BDT_INDEX(1, TX, EVEN)].desc = BDT_DESC(ENDP1_SIZE, 0);
-        table[BDT_INDEX(1, TX, EVEN)].addr = endp1_tx[0];
-        table[BDT_INDEX(1, TX, ODD)].desc = BDT_DESC(ENDP1_SIZE, 0);
-        table[BDT_INDEX(1, TX, ODD)].addr = endp1_tx[1];
 
         endp2_odd = 0;
         table[BDT_INDEX(2, RX, EVEN)].desc = BDT_DESC(ENDP2_SIZE, 0);
@@ -786,7 +798,7 @@ void USBOTG_IRQHandler(void)
         /*
          * handle completion of current token being processed
          */
-        dbg("token done interrupt\r\n");
+        // dbg("token done interrupt\r\n");
 
         stat = USB0_STAT;
         endpoint = stat >> 4;
