@@ -61,7 +61,7 @@ int main(void)
 
     PORTC_PCR5 = PORT_PCR_MUX(0x1);     /* LED is on PTC5 (pin 13), config as GPIO (alt = 1) */
     GPIOC_PDDR = (1 << 5);              /* make this an output pin */
-    LED_OFF();                          /* start with LED off */
+    LED_ON();
 
     PORTA_PCR12 = PORT_PCR_MUX(0x1);
     PORTA_PCR13 = PORT_PCR_MUX(0x1);
@@ -128,11 +128,19 @@ int main(void)
 
 void PIT0_IRQHandler()
 {
+    static int toggle_led = 0;
+
     /*
      * reset the interrupt flag
      */
     PIT_TFLG0 |= PIT_TFLG_TIF_MASK;
     dbg("timer 0 interrupt!\r\n");
+
+    toggle_led = !toggle_led;
+    if (toggle_led)
+        LED_ON();
+    else
+        LED_OFF();
 }
 
 void PIT1_IRQHandler()
