@@ -41,7 +41,8 @@ CSRCS= \
 	tbdm_main.c \
 	sysinit.c \
 	uart.c \
-	bdm.c \
+	bdmcf.c \
+	cmd_processing.c \
 	xprintf.c \
 	xstring.c \
 	wait.c \
